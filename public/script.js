@@ -1,5 +1,3 @@
-import { translateText } from './api/translation.js'; // Import translation function
-
 const textInput = document.querySelector('#textArea');
 const languageSelect = document.querySelector('#languageSelect');
 const voiceSelect = document.querySelector('#voiceSelect');
@@ -16,11 +14,11 @@ function loadVoices() {
 
   if (voices.length === 0) {
     console.log('Voices not ready, retrying...');
-    setTimeout(loadVoices, 200); // Retry if voices aren't loaded yet
+    setTimeout(loadVoices, 200);
     return;
   }
 
-  voiceSelect.innerHTML = ''; // Clear previous options
+  voiceSelect.innerHTML = '';
 
   voices.forEach((voice) => {
     const option = document.createElement('option');
@@ -34,24 +32,30 @@ function loadVoices() {
 
 // Ensure voices are loaded before using them
 speechSynthesis.addEventListener('voiceschanged', loadVoices);
-setTimeout(loadVoices, 500); // Ensure voices load on page start
+setTimeout(loadVoices, 500);
 
-// Function to find the best matching voice for a given language
-function findBestVoice(targetLang) {
-  let bestVoice = voices.find((voice) => voice.lang.startsWith(targetLang));
+async function translateText(text, targetLang) {
+  try {
+    const response = await fetch('/translate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text, targetLang }),
+    });
 
-  if (!bestVoice) {
-    console.log(`No exact voice match for ${targetLang}, trying fallback.`);
-    bestVoice =
-      voices.find((voice) => voice.lang.includes(targetLang)) ||
-      voices.find((voice) => voice.lang.startsWith('en')); // Fallback to English if no match
+    const data = await response.json();
+    console.log('API Response:', data);
+
+    if (data.translation) {
+      return data.translation;
+    } else {
+      throw new Error('Translation API returned an unexpected response.');
+    }
+  } catch (error) {
+    console.error('Translation failed:', error);
+    return null;
   }
-
-  console.log(
-    `Best voice for ${targetLang}:`,
-    bestVoice ? bestVoice.name : 'None found'
-  );
-  return bestVoice;
 }
 
 // Play button event
@@ -65,7 +69,6 @@ playButton.addEventListener('click', async () => {
   }
 
   try {
-    // Translate the text using the imported function
     const translatedText = await translateText(text, targetLanguage);
 
     if (!translatedText) {
@@ -74,24 +77,20 @@ playButton.addEventListener('click', async () => {
     }
 
     console.log('Translated Text:', translatedText);
-
-    // Display translated text in the textarea
     translatedTextArea.value = translatedText;
 
-    // Ensure speech queue is cleared before speaking (Fix for Chrome bug)
-    speechSynthesis.cancel(); // 💡 This resets speech to prevent it from getting stuck
+    speechSynthesis.cancel();
 
-    // Speak the translated text
     const utterance = new SpeechSynthesisUtterance(translatedText);
-
-    // Find the best matching voice
-    let selectedVoice = findBestVoice(targetLanguage);
+    let selectedVoice =
+      voices.find((voice) => voice.lang.startsWith(targetLanguage)) ||
+      voices.find((voice) => voice.lang.startsWith('en'));
 
     if (selectedVoice) {
       utterance.voice = selectedVoice;
-      utterance.lang = selectedVoice.lang; // Set the language
+      utterance.lang = selectedVoice.lang;
     } else {
-      utterance.lang = targetLanguage; // Set only the language if no matching voice is found
+      utterance.lang = targetLanguage;
     }
 
     console.log(
