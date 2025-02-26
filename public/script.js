@@ -1,74 +1,55 @@
 const textInput = document.querySelector('#textArea');
 const languageSelect = document.querySelector('#languageSelect');
 const voiceSelect = document.querySelector('#voiceSelect');
+const translatedTextArea = document.querySelector('#translatedText');
 const playButton = document.querySelector('#playButton');
+const downloadButton = document.querySelector('#downloadButton');
+const copyButton = document.querySelector('#copyButton');
 
 // Load available voices
 let voices = [];
 
 function loadVoices() {
   voices = speechSynthesis.getVoices();
+
+  if (voices.length === 0) {
+    console.log('Voices not ready, retrying...');
+    setTimeout(loadVoices, 200); // Retry if voices aren't loaded yet
+    return;
+  }
+
   voiceSelect.innerHTML = ''; // Clear previous options
 
-  voices.forEach((voice, index) => {
+  voices.forEach((voice) => {
     const option = document.createElement('option');
     option.value = voice.name;
     option.textContent = `${voice.name} (${voice.lang})`;
     voiceSelect.appendChild(option);
   });
 
-  // Add default option
-  if (voices.length === 0) {
-    const defaultOption = document.createElement('option');
-    defaultOption.value = 'default';
-    defaultOption.textContent = 'Default Voice';
-    voiceSelect.appendChild(defaultOption);
-  }
+  console.log('Voices loaded:', voices);
 }
 
-// Load voices on page load and when voices change
+// Ensure voices are loaded before using them
 speechSynthesis.addEventListener('voiceschanged', loadVoices);
-loadVoices();
+setTimeout(loadVoices, 500); // Ensure voices load on page start
 
-// Detect language function (optional)
-async function detectLanguage(text) {
-  const url = 'https://libretranslate.com/detect';
-
+// OpenAI Translation Function (Auto Language Detection)
+async function translateText(text, targetLang) {
   try {
-    const response = await fetch(url, {
+    const response = await fetch('http://localhost:5000/translate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: text }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text, targetLang }),
     });
 
     const data = await response.json();
-    console.log('Language Detection:', data);
-
-    if (data && data.length > 0) {
-      return data[0].language;
-    } else {
-      return 'en'; // Default to English if detection fails
-    }
-  } catch (error) {
-    console.error('Language detection failed:', error);
-    return 'en'; // Default to English on error
-  }
-}
-
-// Translate function
-async function translateText(text, targetLang) {
-  const sourceLang = await detectLanguage(text); // Automatically detect language
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
-    text
-  )}&langpair=${sourceLang}|${targetLang}`;
-
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
     console.log('API Response:', data);
 
-    if (data && data.responseData && data.responseData.translatedText) {
-      return data.responseData.translatedText;
+    if (data.translation) {
+      return data.translation;
     } else {
       throw new Error('Translation API returned an unexpected response.');
     }
@@ -78,11 +59,28 @@ async function translateText(text, targetLang) {
   }
 }
 
+// Function to find the best matching voice for a given language
+function findBestVoice(targetLang) {
+  let bestVoice = voices.find((voice) => voice.lang.startsWith(targetLang));
+
+  if (!bestVoice) {
+    console.log(`No exact voice match for ${targetLang}, trying fallback.`);
+    bestVoice =
+      voices.find((voice) => voice.lang.includes(targetLang)) ||
+      voices.find((voice) => voice.lang.startsWith('en')); // Fallback to English if no match
+  }
+
+  console.log(
+    `Best voice for ${targetLang}:`,
+    bestVoice ? bestVoice.name : 'None found'
+  );
+  return bestVoice;
+}
+
 // Play button event
 playButton.addEventListener('click', async () => {
   const text = textInput.value.trim();
   const targetLanguage = languageSelect.value;
-  const selectedVoiceName = voiceSelect.value;
 
   if (!text) {
     alert('Please enter text to translate and play.');
@@ -100,20 +98,55 @@ playButton.addEventListener('click', async () => {
 
     console.log('Translated Text:', translatedText);
 
+    // Display translated text in the textarea
+    translatedTextArea.value = translatedText;
+
+    // Ensure speech queue is cleared before speaking (Fix for Chrome bug)
+    speechSynthesis.cancel(); // 💡 This resets speech to prevent it from getting stuck
+
     // Speak the translated text
     const utterance = new SpeechSynthesisUtterance(translatedText);
 
-    // Set voice
-    const selectedVoice = voices.find(
-      (voice) => voice.name === selectedVoiceName
-    );
+    // Find the best matching voice
+    let selectedVoice = findBestVoice(targetLanguage);
+
     if (selectedVoice) {
       utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang; // Set the language
+    } else {
+      utterance.lang = targetLanguage; // Set only the language if no matching voice is found
     }
 
+    console.log(
+      'Speaking with voice:',
+      utterance.voice ? utterance.voice.name : 'Default'
+    );
     speechSynthesis.speak(utterance);
   } catch (error) {
     console.error('Translation failed:', error);
     alert('Error: Could not translate the text.');
   }
+});
+
+// Download button event
+downloadButton.addEventListener('click', () => {
+  const translatedText = translatedTextArea.value.trim();
+
+  if (!translatedText) {
+    alert('No translated text to download.');
+    return;
+  }
+
+  const blob = new Blob([translatedText], { type: 'text/plain' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'translated_text.txt';
+  link.click();
+});
+
+// Copy button event
+copyButton.addEventListener('click', () => {
+  translatedTextArea.select();
+  document.execCommand('copy');
+  alert('Translated text copied to clipboard!');
 });
