@@ -1,3 +1,5 @@
+import { translateText } from './api/translation.js'; // Import translation function
+
 const textInput = document.querySelector('#textArea');
 const languageSelect = document.querySelector('#languageSelect');
 const voiceSelect = document.querySelector('#voiceSelect');
@@ -34,31 +36,6 @@ function loadVoices() {
 speechSynthesis.addEventListener('voiceschanged', loadVoices);
 setTimeout(loadVoices, 500); // Ensure voices load on page start
 
-// OpenAI Translation Function (Auto Language Detection)
-async function translateText(text, targetLang) {
-  try {
-    const response = await fetch('http://localhost:5000/translate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text, targetLang }),
-    });
-
-    const data = await response.json();
-    console.log('API Response:', data);
-
-    if (data.translation) {
-      return data.translation;
-    } else {
-      throw new Error('Translation API returned an unexpected response.');
-    }
-  } catch (error) {
-    console.error('Translation failed:', error);
-    return null;
-  }
-}
-
 // Function to find the best matching voice for a given language
 function findBestVoice(targetLang) {
   let bestVoice = voices.find((voice) => voice.lang.startsWith(targetLang));
@@ -88,7 +65,7 @@ playButton.addEventListener('click', async () => {
   }
 
   try {
-    // Translate the text
+    // Translate the text using the imported function
     const translatedText = await translateText(text, targetLanguage);
 
     if (!translatedText) {
